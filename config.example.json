@@ -1,0 +1,8 @@
+{
+  "url": "https://www.sportpalace.co.il/menora-mivtachim/%D7%9C%D7%95%D7%97-%D7%90%D7%A8%D7%95%D7%A2%D7%99%D7%9D/",
+  "target_email": "your-email@gmail.com",
+  "event_duration_minutes": 30,
+  "event_color": "11",
+  "event_location": "Menora Mivtachim Arena, Tel Aviv",
+  "reminder_minutes": [60, 1440]
+}
