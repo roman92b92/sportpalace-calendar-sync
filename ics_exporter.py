@@ -19,14 +19,8 @@ Usage:
 import sys
 import uuid
 import argparse
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
-from zoneinfo import ZoneInfo          # Python 3.9+
-# Fallback for Python 3.8:
-try:
-    from zoneinfo import ZoneInfo
-except ImportError:
-    from backports.zoneinfo import ZoneInfo  # pip install backports.zoneinfo
 
 # Fix Windows console encoding
 if sys.platform == 'win32':
@@ -66,7 +60,6 @@ def build_ics(events: list, config: dict) -> str:
         date  (datetime) — naive local datetime in Israel timezone
     """
     tz_name = 'Asia/Jerusalem'
-    tz = ZoneInfo(tz_name)
     duration = timedelta(minutes=config.get('event_duration_minutes', 30))
     location = escape_ics(config.get('event_location', ''))
     reminders = config.get('reminder_minutes', [60, 1440])
