@@ -52,10 +52,12 @@ HEBREW_MONTHS = {
     'ספטמבר': 9, 'אוקטובר': 10, 'נובמבר': 11, 'דצמבר': 12,
 }
 
-# Matches: "פברואר 22, 2026 20:55"  or  "מרץ 3, 2026 21:00"
-HEBREW_DATE_RE = re.compile(
-    r'([\u05D0-\u05EA]+)\s+(\d{1,2}),?\s*(\d{4})\s+(\d{1,2}):(\d{2})'
+# Matches a date-only line: "מרץ 2, 2026"
+HEBREW_DATE_ONLY_RE = re.compile(
+    r'^([\u05D0-\u05EA]+)\s+(\d{1,2}),?\s*(\d{4})\s*$'
 )
+# Matches a standalone time line: "21:00"
+TIME_RE = re.compile(r'^(\d{1,2}):(\d{2})$')
 
 
 class SportPalaceEventScraper:
@@ -133,12 +135,16 @@ class SportPalaceEventScraper:
         """
         Parse events from page text.
 
-        The My Calendar plugin renders dates as:
-            "פברואר 22, 2026 20:55"
+        The My Calendar plugin renders each event as a block of lines:
+            "מרץ 2, 2026"           ← date-only line
+            "-"                      ← separator
+            "לירן דנינו"             ← event name
+            "יום שני 02.03.2026"    ← day-of-week + numeric date (skipped)
+            "לירן דנינו"             ← event name (repeated)
+            "21:00"                  ← time
 
-        Strategy: strip scripts/styles, split the page into lines, find every
-        line containing a Hebrew date, and look at the surrounding lines for
-        the event name.
+        Strategy: find each date-only line, then scan the next few lines
+        for the event name and time.
         """
         soup = BeautifulSoup(html, 'html.parser')
 
@@ -156,37 +162,45 @@ class SportPalaceEventScraper:
         events = []
 
         for i, line in enumerate(lines):
-            match = HEBREW_DATE_RE.search(line)
-            if not match:
+            date_match = HEBREW_DATE_ONLY_RE.match(line)
+            if not date_match:
                 continue
 
-            heb_month = match.group(1)
-            day       = int(match.group(2))
-            year      = int(match.group(3))
-            hour      = int(match.group(4))
-            minute    = int(match.group(5))
+            heb_month = date_match.group(1)
+            day       = int(date_match.group(2))
+            year      = int(date_match.group(3))
 
             month = self._parse_hebrew_month(heb_month)
             if not month:
                 continue
 
-            # Try to get the event name from the same line (text before the date)
-            name = HEBREW_DATE_RE.sub('', line).strip()
-            name = re.sub(r'\s+', ' ', name).strip()
+            # Look ahead within the next 6 lines for name and time
+            name   = None
+            hour   = None
+            minute = None
 
-            # If the line only contained the date, look at nearby lines
-            if not name or len(name) < 2:
-                for j in range(i - 1, max(i - 6, -1), -1):
-                    candidate = lines[j]
-                    # Skip lines that are just dates, numbers, or punctuation
-                    if (candidate
-                            and not HEBREW_DATE_RE.search(candidate)
-                            and len(candidate) > 2
-                            and not re.fullmatch(r'[\d\s\:\.\,\-\|/]+', candidate)):
-                        name = candidate
-                        break
+            for j in range(i + 1, min(i + 7, len(lines))):
+                candidate = lines[j]
 
-            if not name or len(name) < 2:
+                # Time line: "21:00"
+                t = TIME_RE.match(candidate)
+                if t and hour is None:
+                    hour   = int(t.group(1))
+                    minute = int(t.group(2))
+                    continue
+
+                # Skip: separator, numeric-date lines, other date headers, time lines
+                if (candidate == '-'
+                        or re.search(r'\d{2}\.\d{2}\.\d{4}', candidate)
+                        or HEBREW_DATE_ONLY_RE.match(candidate)
+                        or TIME_RE.match(candidate)):
+                    continue
+
+                # First remaining line is the event name
+                if name is None and len(candidate) > 1:
+                    name = candidate
+
+            if not name or hour is None:
                 continue
 
             try:
