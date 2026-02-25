@@ -70,19 +70,30 @@ class SportPalaceEventScraper:
     }
 
     def __init__(self, url: str):
-        # Strip any existing query string — we build month URLs ourselves
-        self.base_url = url.split('?')[0].rstrip('/')
+        from urllib.parse import urlparse, parse_qs
+        parsed = urlparse(url)
+        params = parse_qs(parsed.query)
+        # Preserve the calendar widget ID — required by the My Calendar plugin
+        self.cid = params.get('cid', [None])[0]
+        self.base_url = parsed.scheme + '://' + parsed.netloc + parsed.path.rstrip('/')
 
     def _fetch_url(self, url: str) -> Optional[str]:
         """Fetch a single URL and return the HTML text."""
         try:
-            response = requests.get(url, headers=self.HEADERS, timeout=10)
+            response = requests.get(url, headers=self.HEADERS, timeout=15)
             response.raise_for_status()
             response.encoding = 'utf-8'
             return response.text
         except requests.RequestException as e:
             print(f"  Error fetching {url}: {e}")
             return None
+
+    def _month_url(self, year: int, month: int) -> str:
+        """Build the URL for a specific year/month, preserving the cid."""
+        url = f"{self.base_url}/?yr={year}&month={month}&dy="
+        if self.cid:
+            url += f"&cid={self.cid}"
+        return url
 
     def fetch_page(self) -> Optional[str]:
         """Fetch only the base URL (single month). Kept for backwards compatibility."""
@@ -97,14 +108,13 @@ class SportPalaceEventScraper:
         all_html = ''
 
         for offset in range(months_ahead + 1):
-            month = now.month + offset
-            year = now.year
-            while month > 12:
-                month -= 12
-                year += 1
-
-            url = f"{self.base_url}/?yr={year}&month={month}"
-            print(f"  Fetching {year}-{month:02d} …")
+            m = now.month + offset
+            y = now.year
+            while m > 12:
+                m -= 12
+                y += 1
+            url = self._month_url(y, m)
+            print(f"  Fetching {y}-{m:02d} …")
             html = self._fetch_url(url)
             if html:
                 all_html += html
@@ -121,26 +131,32 @@ class SportPalaceEventScraper:
 
     def parse_events(self, html: str) -> List[Dict]:
         """
-        Parse events from HTML.
+        Parse events from page text.
 
-        The My Calendar WordPress plugin renders dates as:
+        The My Calendar plugin renders dates as:
             "פברואר 22, 2026 20:55"
-        We find every occurrence of that pattern and reconstruct the event name
-        from the surrounding element text.
+
+        Strategy: strip scripts/styles, split the page into lines, find every
+        line containing a Hebrew date, and look at the surrounding lines for
+        the event name.
         """
         soup = BeautifulSoup(html, 'html.parser')
+
+        # Remove noise
+        for tag in soup(['script', 'style', 'head', 'nav', 'footer']):
+            tag.decompose()
+
+        # Split into clean lines
+        lines = [
+            ln.strip()
+            for ln in soup.get_text(separator='\n').splitlines()
+            if ln.strip()
+        ]
+
         events = []
 
-        # My Calendar plugin wraps each event in an element whose class
-        # contains "mc-event" or "event-detail". Fall back to any block element.
-        candidates = (
-            soup.find_all(True, class_=re.compile(r'mc.?event|event.?detail', re.I))
-            or soup.find_all(['div', 'article', 'li'])
-        )
-
-        for item in candidates:
-            text = item.get_text(separator=' ', strip=True)
-            match = HEBREW_DATE_RE.search(text)
+        for i, line in enumerate(lines):
+            match = HEBREW_DATE_RE.search(line)
             if not match:
                 continue
 
@@ -154,9 +170,22 @@ class SportPalaceEventScraper:
             if not month:
                 continue
 
-            # Event name = text with the date/time pattern removed
-            name = HEBREW_DATE_RE.sub('', text)
+            # Try to get the event name from the same line (text before the date)
+            name = HEBREW_DATE_RE.sub('', line).strip()
             name = re.sub(r'\s+', ' ', name).strip()
+
+            # If the line only contained the date, look at nearby lines
+            if not name or len(name) < 2:
+                for j in range(i - 1, max(i - 6, -1), -1):
+                    candidate = lines[j]
+                    # Skip lines that are just dates, numbers, or punctuation
+                    if (candidate
+                            and not HEBREW_DATE_RE.search(candidate)
+                            and len(candidate) > 2
+                            and not re.fullmatch(r'[\d\s\:\.\,\-\|/]+', candidate)):
+                        name = candidate
+                        break
+
             if not name or len(name) < 2:
                 continue
 
@@ -172,7 +201,7 @@ class SportPalaceEventScraper:
             })
 
         # Deduplicate and sort chronologically
-        seen = set()
+        seen: set = set()
         unique: List[Dict] = []
         for ev in sorted(events, key=lambda e: e['date']):
             key = (ev['name'], ev['date'].strftime('%Y-%m-%d %H:%M'))
