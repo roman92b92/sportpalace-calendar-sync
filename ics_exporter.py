@@ -152,6 +152,8 @@ How to import into Google Calendar:
                         help='Path to config file (default: config.json)')
     parser.add_argument('--output', default='', metavar='FILE',
                         help='Output .ics filename (default: sportpalace_YYYY-MM-DD.ics)')
+    parser.add_argument('--month', default='', metavar='YYYY-MM',
+                        help='Fetch a specific month only, e.g. 2026-03')
     args = parser.parse_args()
 
     print('=' * 55)
@@ -173,13 +175,26 @@ How to import into Google Calendar:
     print(f'\nSource   : {url}')
     print(f'Duration : {config.get("event_duration_minutes", 30)} minutes per event')
     print(f'Location : {config.get("event_location", "")}')
-    print(f'Months   : current + {months_ahead} ahead')
+    if args.month:
+        print(f'Month    : {args.month} (specific)')
+    else:
+        print(f'Months   : current + {months_ahead} ahead')
     print(f'Timezone : Asia/Jerusalem')
 
     # Scrape events
     print('\nFetching events...')
     scraper = SportPalaceEventScraper(url)
-    html = scraper.fetch_months(months_ahead)
+
+    if args.month:
+        try:
+            year, month_num = map(int, args.month.split('-'))
+        except ValueError:
+            print(f'Error: --month must be in YYYY-MM format, e.g. 2026-03')
+            sys.exit(1)
+        print(f'  Fetching {year}-{month_num:02d} …')
+        html = scraper._fetch_url(scraper._month_url(year, month_num))
+    else:
+        html = scraper.fetch_months(months_ahead)
     if not html:
         print('Failed to fetch pages.')
         sys.exit(1)
