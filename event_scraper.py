@@ -31,22 +31,15 @@ if sys.platform == 'win32':
 SCOPES = ['https://www.googleapis.com/auth/calendar']
 
 # Load configuration from config.json
-def load_config():
-    """Load configuration from config.json"""
-    config_path = 'config.json'
-    if os.path.exists(config_path):
-        with open(config_path, 'r', encoding='utf-8') as f:
+def load_config(config_file='config.json'):
+    """Load configuration from a JSON file."""
+    if os.path.exists(config_file):
+        with open(config_file, 'r', encoding='utf-8') as f:
             return json.load(f)
     else:
-        # Default configuration
-        return {
-            'url': 'https://www.sportpalace.co.il/menora-mivtachim/%D7%9C%D7%95%D7%97-%D7%90%D7%A8%D7%95%D7%A2%D7%99%D7%9D/',
-            'target_email': 'roman92b92@gmail.com',
-            'event_duration_minutes': 30,
-            'event_color': '11',
-            'event_location': 'Menora Mivtachim Arena, Tel Aviv',
-            'reminder_minutes': [60, 1440]
-        }
+        print(f"Error: Config file '{config_file}' not found.")
+        print("Copy config.example.json to config.json and fill in your details.")
+        return None
 
 import json
 CONFIG = load_config()
@@ -327,6 +320,8 @@ def main():
 
     # Load configuration
     config = load_config()
+    if not config:
+        return
     url = config['url']
 
     print(f"\n📍 Source: {url}")
