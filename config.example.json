@@ -4,5 +4,6 @@
   "event_duration_minutes": 30,
   "event_color": "11",
   "event_location": "Menora Mivtachim Arena, Tel Aviv",
-  "reminder_minutes": [60, 1440]
+  "reminder_minutes": [60, 1440],
+  "months_ahead": 1
 }

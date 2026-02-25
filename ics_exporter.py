@@ -169,17 +169,19 @@ How to import into Google Calendar:
         print('Error: "url" is missing from config.json')
         sys.exit(1)
 
-    print(f'\nSource  : {url}')
-    print(f'Duration: {config.get("event_duration_minutes", 30)} minutes per event')
-    print(f'Location: {config.get("event_location", "")}')
-    print(f'Timezone: Asia/Jerusalem')
+    months_ahead = config.get('months_ahead', 1)
+    print(f'\nSource   : {url}')
+    print(f'Duration : {config.get("event_duration_minutes", 30)} minutes per event')
+    print(f'Location : {config.get("event_location", "")}')
+    print(f'Months   : current + {months_ahead} ahead')
+    print(f'Timezone : Asia/Jerusalem')
 
     # Scrape events
     print('\nFetching events...')
     scraper = SportPalaceEventScraper(url)
-    html = scraper.fetch_page()
+    html = scraper.fetch_months(months_ahead)
     if not html:
-        print('Failed to fetch page.')
+        print('Failed to fetch pages.')
         sys.exit(1)
 
     events = scraper.parse_events(html)
